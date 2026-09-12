@@ -1,30 +1,10 @@
-<Window x:Class="TimeLapse3D.MainWindow"
+<Window x:Class="KobraTimeLapse.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="3D Time Lapse" Height="560" Width="640" MinHeight="500" MinWidth="560"
+        Title="Kobra Time Lapse" Height="480" Width="640" MinHeight="420" MinWidth="560"
         Background="{DynamicResource WindowBackgroundBrush}">
-    <Window.Resources>
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource ControlForegroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource ControlForegroundBrush}"/>
-            <Setter Property="Padding" Value="4,3"/>
-        </Style>
-        <Style TargetType="ListBox">
-            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource ControlForegroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}"/>
-        </Style>
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource ControlForegroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}"/>
-        </Style>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource ControlForegroundBrush}"/>
-        </Style>
-    </Window.Resources>
+    <!-- Shared control styles (TextBox, PasswordBox, ComboBox, etc.) live in App.xaml so
+         every window stays visually consistent and theme-aware from one place. -->
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -34,68 +14,58 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0">
-            <TextBlock Text="RTSP camera URL" FontWeight="Bold" Margin="0,0,0,2"/>
-            <TextBox x:Name="RtspUrlBox" Margin="0,0,0,8"/>
+            <CheckBox x:Name="ManualModeCheck" Content="Manual mode -- I'll click Start/Stop myself (no printer connection needed)"
+                      Margin="0,0,0,8" Checked="ManualModeCheck_Changed" Unchecked="ManualModeCheck_Changed"/>
 
             <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="8"/>
-                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="140"/>
                     <ColumnDefinition Width="16"/>
                     <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="Moonraker host / IP" FontWeight="Bold" Margin="0,0,0,2"/>
-                    <TextBox x:Name="MoonrakerHostBox"/>
-                </StackPanel>
-                <StackPanel Grid.Column="2">
-                    <TextBlock Text="Port" FontWeight="Bold" Margin="0,0,0,2"/>
-                    <TextBox x:Name="MoonrakerPortBox"/>
-                </StackPanel>
-                <StackPanel Grid.Column="4">
                     <TextBlock Text="Poll/capture (s)" FontWeight="Bold" Margin="0,0,0,2"/>
                     <TextBox x:Name="IntervalBox"/>
                 </StackPanel>
-            </Grid>
-
-            <TextBlock Text="Output folder" FontWeight="Bold" Margin="0,0,0,2"/>
-            <Grid Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="8"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBox x:Name="OutputFolderBox" Grid.Column="0"/>
-                <Button x:Name="BrowseButton" Grid.Column="2" Content="Browse..." Padding="10,2" Click="BrowseButton_Click"/>
-            </Grid>
-
-            <Grid Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="16"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
+                <StackPanel Grid.Column="2">
                     <TextBlock Text="Assemble FPS" FontWeight="Bold" Margin="0,0,0,2"/>
                     <TextBox x:Name="FramerateBox"/>
                 </StackPanel>
-                <StackPanel Grid.Column="2">
+                <StackPanel Grid.Column="4">
                     <TextBlock Text="ffmpeg path (or just 'ffmpeg' if on PATH)" FontWeight="Bold" Margin="0,0,0,2"/>
                     <TextBox x:Name="FfmpegPathBox"/>
                 </StackPanel>
             </Grid>
+
+            <TextBlock Text="Printer, camera, save location, features, and rotation are configured via Setup." Foreground="{DynamicResource SecondaryForegroundBrush}" FontSize="11" Margin="0,0,0,8"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,8">
-            <Button x:Name="StartStopButton" Content="Start Watching" Padding="16,6" Click="StartStopButton_Click"/>
-            <TextBlock x:Name="StatusText" Text="Idle" VerticalAlignment="Center" Margin="12,0,0,0" FontWeight="Bold"/>
-        </StackPanel>
+        <Grid Grid.Row="1" Margin="0,4,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button x:Name="StartStopButton" Content="Start Watching" Padding="16,6" Click="StartStopButton_Click"/>
+                <Button x:Name="SetupButton" Content="Setup..." Padding="16,6" Margin="8,0,0,0" Click="SetupButton_Click"/>
+                <TextBlock x:Name="StatusText" Text="Idle" VerticalAlignment="Center" Margin="12,0,0,0" FontWeight="Bold"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Theme" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="ThemeCombo" Width="80" SelectionChanged="ThemeCombo_SelectionChanged">
+                    <ComboBoxItem Content="Auto"/>
+                    <ComboBoxItem Content="Light"/>
+                    <ComboBoxItem Content="Dark"/>
+                </ComboBox>
+            </StackPanel>
+        </Grid>
 
         <ListBox x:Name="LogList" Grid.Row="2" FontFamily="Consolas" FontSize="12"/>
 
         <TextBlock Grid.Row="3" Margin="0,8,0,0" TextWrapping="Wrap"
                    Foreground="{DynamicResource SecondaryForegroundBrush}"
-                   Text="Watches Moonraker for print state. Grabs a frame from the RTSP camera every interval while a print is running, and assembles a timelapse.mp4 automatically once the print finishes, is cancelled, or errors."/>
+                   Text="Watches the Kobra 3's own LAN protocol for print state (no Moonraker needed). Grabs a frame from the RTSP camera every interval while a print is running, and assembles a timelapse.mp4 automatically once the print finishes, is cancelled, or errors."/>
     </Grid>
 </Window>

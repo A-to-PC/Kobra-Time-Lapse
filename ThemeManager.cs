@@ -4,7 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using Microsoft.Win32;
 
-namespace TimeLapse3D;
+namespace KobraTimeLapse;
 
 public static class ThemeManager
 {
@@ -13,6 +13,18 @@ public static class ThemeManager
 
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
+
+    private static readonly List<Window> TrackedWindows = new();
+
+    // null = follow Windows' own light/dark setting live; true/false = explicit user
+    // override that ignores OS theme changes until cleared. Persisted via Settings.Theme.
+    public static bool? Override { get; private set; }
+
+    public static void SetOverride(bool? isDark)
+    {
+        Override = isDark;
+        ApplyToAllTracked();
+    }
 
     public static bool IsSystemDarkTheme()
     {
@@ -29,9 +41,11 @@ public static class ThemeManager
         }
     }
 
+    private static bool ResolveIsDark() => Override ?? IsSystemDarkTheme();
+
     public static void ApplyResources()
     {
-        var dark = IsSystemDarkTheme();
+        var dark = ResolveIsDark();
         var res = Application.Current.Resources;
 
         if (dark)
@@ -50,6 +64,18 @@ public static class ThemeManager
             res["ControlBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xAC, 0xAC, 0xAC));
             res["SecondaryForegroundBrush"] = new SolidColorBrush(Colors.Gray);
         }
+
+        // ComboBox's dropdown popup (DropDownBorder in its default template) renders using
+        // these SystemColors keys directly, not whatever's set on the ComboBox control itself
+        // -- without overriding them here, the popped-out item list stays stuck on the OS's
+        // default white/black regardless of the app's own theme. Highlight/HighlightText cover
+        // the hovered/selected item's colors inside that list.
+        res[SystemColors.WindowBrushKey] = res["ControlBackgroundBrush"];
+        res[SystemColors.WindowTextBrushKey] = res["ControlForegroundBrush"];
+        res[SystemColors.HighlightBrushKey] = new SolidColorBrush(dark
+            ? Color.FromRgb(0x3A, 0x3A, 0x3A)
+            : Color.FromRgb(0xD0, 0xE0, 0xFF));
+        res[SystemColors.HighlightTextBrushKey] = res["ControlForegroundBrush"];
     }
 
     public static void ApplyTitleBar(Window window)
@@ -57,27 +83,40 @@ public static class ThemeManager
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero) return;
 
-        var dark = IsSystemDarkTheme() ? 1 : 0;
+        var dark = ResolveIsDark() ? 1 : 0;
         if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int)) != 0)
         {
             DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref dark, sizeof(int));
         }
     }
 
-    /// <summary>Applies resources + title bar now, and keeps both in sync if the user flips Windows theme while the app is open.</summary>
+    /// <summary>Applies resources + title bar now, and keeps both in sync if the user flips Windows theme while the app is open (unless an explicit override is set).</summary>
     public static void Track(Window window)
     {
+        TrackedWindows.Add(window);
+        window.Closed += (_, _) => TrackedWindows.Remove(window);
+
         ApplyResources();
         window.SourceInitialized += (_, _) => ApplyTitleBar(window);
 
         SystemEvents.UserPreferenceChanged += (_, e) =>
         {
             if (e.Category != UserPreferenceCategory.General) return;
+            if (Override != null) return; // explicit override active -- ignore OS theme changes
             window.Dispatcher.Invoke(() =>
             {
                 ApplyResources();
                 ApplyTitleBar(window);
             });
         };
+    }
+
+    private static void ApplyToAllTracked()
+    {
+        ApplyResources(); // resources are shared app-wide; only needs setting once
+        foreach (var window in TrackedWindows.ToArray())
+        {
+            window.Dispatcher.Invoke(() => ApplyTitleBar(window));
+        }
     }
 }

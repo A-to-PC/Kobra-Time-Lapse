@@ -3,4 +3,5 @@ obj/
 *.user
 ffmpeg.exe
 publish/
+installer_output/
 *.zip

@@ -1,41 +1,48 @@
-# 3D Time Lapse
+# Kobra Time Lapse
 
-A small standalone Windows app that watches a [Moonraker](https://github.com/Arksine/moonraker)-enabled 3D printer for print state and automatically records a timelapse from any RTSP camera — no Klipper config changes required.
+A small standalone Windows app that watches an Anycubic Kobra 3-series printer's own LAN protocol for print state, records a timelapse from any RTSP camera while it prints, and can optionally flag a large sudden change between frames as a possible print failure.
+
+No Moonraker, no Klipper, no OctoPrint plugin, nothing installed on the printer — it talks to the printer's stock firmware directly over your network, the same way Anycubic's own apps do. If you're running Rinkhals with Moonraker, see [3D-Time-Lapse](https://github.com/A-to-PC/3D-Time-Lapse) instead — that's the Moonraker-based sibling of this project; this one is for stock firmware only.
 
 ## Why this exists
 
-The obvious way to get a print-triggered timelapse is [moonraker-timelapse](https://github.com/mainsail-crew/moonraker-timelapse), a plugin that runs *inside* Moonraker/Klipper. That works well on standard installs, but on heavily customized firmware (e.g. [Rinkhals](https://github.com/rinkhals-community/Rinkhals) on Anycubic Kobra printers) it has a track record of crashing Klipper outright when added, with reports going back a long way and no confirmed fix.
+Stock Kobra 3 firmware has no Moonraker or OctoPrint API for a tool like this to hook into, and running custom firmware (e.g. Rinkhals) just to get one is a real tradeoff — louder fans, harder calibration, and its own set of quirks. This app talks the printer's actual local MQTT protocol instead, reverse-engineered independently, so it works against completely stock firmware with nothing to install or configure on the printer side.
 
-3D Time Lapse takes a different approach: it never touches Klipper or Moonraker's config at all. It only ever makes **read-only** polling requests to Moonraker's REST API to check `print_stats.state`, and separately talks to your camera over RTSP. If the printer's firmware is fragile, this app can't make it worse — there's nothing to install on the printer side.
+## Features
 
-## How it works
+- **Timelapse** — captures a frame at a set interval while a print is running, assembles `timelapse.mp4` automatically once it finishes, and can delete the individual snapshot frames afterward so completed prints don't leave hundreds of loose JPEGs behind.
+- **Failure detection** (optional, off by default) — compares consecutive frames and flags a large sudden change as a possible anomaly. Log-only unless you explicitly also enable auto-pause. Expect this to need real tuning against your own prints and enclosure/lighting setup before trusting it — an enclosure light or roller door changing, or even normal camera sensor noise, can register as a "large change" too.
+- **Camera rotation** — 0/90/180/270 degrees, for a camera mounted sideways to better frame a tall/narrow printer.
+- **Manual mode** — record on a plain interval with Start/Stop, no printer connection needed at all.
+- Light/dark theme, following Windows automatically or set explicitly.
 
-1. Polls `GET /printer/objects/query?print_stats` on your Moonraker instance every N seconds (your choice).
-2. When state transitions into `printing`, it starts a new capture session and grabs one JPEG frame from your RTSP camera every interval via `ffmpeg`.
-3. Capture pauses automatically while the printer is `paused` (no duplicate frames of a stalled print), and resumes when printing continues.
-4. The moment state moves to `complete`, `cancelled`, `error`, or back to `standby`, it stops and automatically assembles the captured frames into `timelapse.mp4` with `ffmpeg`.
-
-No slicer time estimates, no fixed timers — it goes purely off the printer's actual reported state.
+Timelapse and Failure Detection are independent — run either one alone, or both together.
 
 ## Requirements
 
 - Windows 10/11
 - [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (or build from source with the .NET 10 SDK)
-- A printer running Moonraker, reachable on your network
+- An Anycubic Kobra 3-series printer on stock firmware, reachable on your network
 - An RTSP-capable camera (most consumer WiFi/NVR cameras support this once enabled in their settings)
 - `ffmpeg.exe` — either on your system `PATH`, or dropped next to the app's `.exe` (the release download includes one)
 
 ## Setup
 
-1. Download the latest release, extract it anywhere, and run `TimeLapse3D.exe`.
-2. Fill in:
-   - **RTSP camera URL** — e.g. `rtsp://user:password@192.168.1.50:554/ch1/main` (varies by camera brand — check your camera's docs for its exact RTSP path)
-   - **Moonraker host / IP** and **port** (Moonraker's default port is `7125`)
-   - **Poll/capture interval** in seconds
-   - **Output folder** — each print gets its own timestamped subfolder with the raw frames and the final `timelapse.mp4`
-   - **Assemble FPS** — the framerate of the final timelapse video
-   - **ffmpeg path** — leave as `ffmpeg` if it's on your `PATH`, or point at a specific `ffmpeg.exe`
-3. Click **Start Watching** and leave it running. Settings are remembered between launches.
+1. Download the latest release, extract it anywhere, and run `KobraTimeLapse.exe`.
+2. The Setup window walks through what's needed:
+   - **Printer IP** — your Kobra 3's LAN IP address (the same one Slicer Next connects to)
+   - **Camera IP, username, password** — the camera's own local RTSP account, which is often separate from any cloud app login
+   - **Features** — enable Timelapse, Failure Detection, or both
+   - **Save location** — where captured frames and the finished video get saved (a network share or mapped drive works fine)
+   - **Camera rotation**
+3. Click **Start Watching** and leave it running. Settings are remembered between launches; reopen Setup any time from the main window to change anything.
+
+## How it works
+
+- Discovers the printer's MQTT broker address and per-session credentials via the same local handshake Anycubic's own apps use, then subscribes to its live status reports (no cloud account, no credentials hardcoded).
+- Watches the reported print state and layer count. When a print starts, it begins capturing; when it ends (by state, or by layer count reaching the total — whichever is more reliable at the time), it assembles the video and stops.
+- Grabs each frame straight from the camera's RTSP stream via `ffmpeg`, applying rotation if configured.
+- Failure detection compares each new frame against the previous one using `ffmpeg`'s own SSIM (structural similarity) filter — no extra image library needed.
 
 ## Building from source
 

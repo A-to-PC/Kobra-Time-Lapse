@@ -7,7 +7,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon Condition="Exists('Assets\icon.ico')">Assets\icon.ico</ApplicationIcon>
+    <AssemblyTitle>Kobra Time Lapse</AssemblyTitle>
+    <Product>Kobra Time Lapse</Product>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MQTTnet" Version="5.2.0.1603" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Assets\icon.ico" Condition="Exists('Assets\icon.ico')" />

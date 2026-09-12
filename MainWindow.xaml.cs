@@ -1,53 +1,63 @@
 using System.Windows;
-using Microsoft.Win32;
+using System.Windows.Controls;
 
-namespace TimeLapse3D;
+namespace KobraTimeLapse;
 
 public partial class MainWindow : Window
 {
     private readonly Settings _settings;
     private CaptureService? _capture;
 
-    public MainWindow()
+    public MainWindow(Settings settings)
     {
         InitializeComponent();
         ThemeManager.Track(this);
-        _settings = Settings.Load();
+        _settings = settings;
         LoadSettingsIntoUi();
     }
 
     private void LoadSettingsIntoUi()
     {
-        RtspUrlBox.Text = _settings.RtspUrl;
-        MoonrakerHostBox.Text = _settings.MoonrakerHost;
-        MoonrakerPortBox.Text = _settings.MoonrakerPort.ToString();
+        ManualModeCheck.IsChecked = _settings.ManualMode;
         IntervalBox.Text = _settings.IntervalSeconds.ToString();
-        OutputFolderBox.Text = _settings.OutputFolder;
         FramerateBox.Text = _settings.AssembleFramerate.ToString();
         FfmpegPathBox.Text = _settings.FfmpegPath;
+        ThemeCombo.SelectedIndex = _settings.Theme switch { "Light" => 1, "Dark" => 2, _ => 0 };
+        UpdateModeUi();
     }
+
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        _settings.Theme = ThemeCombo.SelectedIndex switch { 1 => "Light", 2 => "Dark", _ => "Auto" };
+        _settings.Save();
+        ThemeManager.SetOverride(_settings.Theme switch { "Dark" => true, "Light" => false, _ => null });
+    }
+
+    private void UpdateModeUi()
+    {
+        var manual = ManualModeCheck.IsChecked == true;
+        StartStopButton.Content = _capture is { IsRunning: true }
+            ? "Stop"
+            : manual ? "Start Recording" : "Start Watching";
+    }
+
+    private void ManualModeCheck_Changed(object sender, RoutedEventArgs e) => UpdateModeUi();
 
     private void SaveUiIntoSettings()
     {
-        _settings.RtspUrl = RtspUrlBox.Text.Trim();
-        _settings.MoonrakerHost = MoonrakerHostBox.Text.Trim();
-        _settings.MoonrakerPort = int.TryParse(MoonrakerPortBox.Text, out var port) ? port : 7125;
+        _settings.ManualMode = ManualModeCheck.IsChecked == true;
         _settings.IntervalSeconds = int.TryParse(IntervalBox.Text, out var interval) ? Math.Max(1, interval) : 10;
-        _settings.OutputFolder = OutputFolderBox.Text.Trim();
         _settings.AssembleFramerate = int.TryParse(FramerateBox.Text, out var fps) ? Math.Max(1, fps) : 24;
         _settings.FfmpegPath = FfmpegPathBox.Text.Trim();
         _settings.Save();
     }
 
-    private void BrowseButton_Click(object sender, RoutedEventArgs e)
+    private void SetupButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog
+        var setup = new SetupWindow(_settings) { Owner = this };
+        if (setup.ShowDialog() == true)
         {
-            InitialDirectory = OutputFolderBox.Text,
-        };
-        if (dialog.ShowDialog() == true)
-        {
-            OutputFolderBox.Text = dialog.FolderName;
+            LoadSettingsIntoUi();
         }
     }
 
@@ -56,8 +66,8 @@ public partial class MainWindow : Window
         if (_capture is { IsRunning: true })
         {
             _capture.Stop();
-            StartStopButton.Content = "Start Watching";
             StatusText.Text = "Stopping...";
+            UpdateModeUi();
             return;
         }
 
@@ -65,8 +75,8 @@ public partial class MainWindow : Window
         _capture = new CaptureService(_settings);
         _capture.Log += OnLog;
         _capture.Start();
-        StartStopButton.Content = "Stop Watching";
-        StatusText.Text = "Watching for a print...";
+        StatusText.Text = _settings.ManualMode ? "Recording..." : "Watching for a print...";
+        UpdateModeUi();
     }
 
     private void OnLog(string message)
