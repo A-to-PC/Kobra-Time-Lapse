@@ -6,6 +6,8 @@ No Moonraker, no Klipper, no OctoPrint plugin, nothing installed on the printer 
 
 **Status: pre-release.** Confirmed against a real printer: connecting, capturing frames, and assembling the timelapse once a print finishes. Not yet confirmed against real prints: failure detection's SSIM threshold, the opt-in auto-pause, and camera rotation — treat those as early until they've had real testing.
 
+Part of a small family of tools built out of real Kobra 3 Max ownership — see [Kobra 3 Max: The Long Way Round](https://github.com/A-to-PC/Kobra-3-Max-Journey) for the full story of why this exists.
+
 ## Why this exists
 
 Stock Kobra 3 firmware has no Moonraker or OctoPrint API for a tool like this to hook into, and running custom firmware (e.g. Rinkhals) just to get one is a real tradeoff — louder fans, harder calibration, and its own set of quirks. This app talks the printer's actual local MQTT protocol instead, reverse-engineered independently, so it works against completely stock firmware with nothing to install or configure on the printer side.
