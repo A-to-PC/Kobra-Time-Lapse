@@ -4,6 +4,8 @@ A small standalone Windows app that watches an Anycubic Kobra 3-series printer's
 
 No Moonraker, no Klipper, no OctoPrint plugin, nothing installed on the printer — it talks to the printer's stock firmware directly over your network, the same way Anycubic's own apps do. If you're running Rinkhals with Moonraker, see [3D-Time-Lapse](https://github.com/A-to-PC/3D-Time-Lapse) instead — that's the Moonraker-based sibling of this project; this one is for stock firmware only.
 
+**Status: pre-release.** Confirmed against a real printer: connecting, capturing frames, and assembling the timelapse once a print finishes. Not yet confirmed against real prints: failure detection's SSIM threshold, the opt-in auto-pause, and camera rotation — treat those as early until they've had real testing.
+
 ## Why this exists
 
 Stock Kobra 3 firmware has no Moonraker or OctoPrint API for a tool like this to hook into, and running custom firmware (e.g. Rinkhals) just to get one is a real tradeoff — louder fans, harder calibration, and its own set of quirks. This app talks the printer's actual local MQTT protocol instead, reverse-engineered independently, so it works against completely stock firmware with nothing to install or configure on the printer side.
