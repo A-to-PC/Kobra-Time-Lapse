@@ -56,6 +56,10 @@ dotnet build -c Release
 
 The build output includes `ffmpeg.exe` automatically if one is present in the project root at build time — supply your own if you're building from a fresh clone (not included in source control due to its size).
 
+## How this got built
+
+I've spent decades working in IT, and yes, I do use AI (Claude) heavily to write the code in this project — whole features that would've taken weeks or months by hand come together in minutes to hours instead. No apology for that. What's mine is the experience behind every decision: what was actually worth building, telling a real fix apart from one that just sounds plausible, and the judgment to verify every claim against the real printer before it shipped, not take it on faith from a chatbot. The typing speed was never the hard part.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
