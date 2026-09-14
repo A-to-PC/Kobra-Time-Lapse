@@ -342,7 +342,22 @@ public partial class CaptureService(Settings settings)
             };
             using var process = Process.Start(psi);
             if (process == null) return false;
+
+            // Real bug found and fixed 14/09/2026: stderr was redirected but never read, so
+            // once ffmpeg's continuous progress output filled the redirected pipe's buffer,
+            // ffmpeg itself blocked trying to write to it -- a genuine, permanent deadlock, not
+            // just slow. Confirmed live: assembling 158 frames into a timelapse hung forever
+            // (ffmpeg.exe still running minutes later), while single-frame captures never hit
+            // it because they never write enough stderr output to fill the buffer. Reading the
+            // stream concurrently with WaitForExitAsync (not after it) drains it as it arrives,
+            // and the captured text now also gives a real reason on failure instead of nothing.
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
+            var stderr = await stderrTask;
+
+            if (process.ExitCode != 0)
+                Log?.Invoke($"ffmpeg exited with code {process.ExitCode}: {stderr.Trim()}");
+
             return process.ExitCode == 0;
         }
         catch (Exception ex)
