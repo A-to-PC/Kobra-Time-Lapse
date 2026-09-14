@@ -41,6 +41,8 @@ Timelapse and Failure Detection are independent — run either one alone, or bot
    - **Camera rotation**
 3. Click **Start Watching** and leave it running. Settings are remembered between launches; reopen Setup any time from the main window to change anything.
 
+> **Always use the Stop button, don't close the window directly.** Closing the app while it's still assembling the final video or deleting the source frames kills that work mid-way — the auto-delete setting can't clean up frames it never got the chance to finish deleting. Stop lets any in-progress assembly/cleanup finish properly before the app exits; closing the window doesn't wait for it at all.
+
 ## How it works
 
 - Discovers the printer's MQTT broker address and per-session credentials via the same local handshake Anycubic's own apps use, then subscribes to its live status reports (no cloud account, no credentials hardcoded).
