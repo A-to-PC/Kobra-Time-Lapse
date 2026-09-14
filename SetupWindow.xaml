@@ -55,10 +55,10 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="Sensitivity" FontWeight="Bold" Margin="0,0,0,2"/>
+                    <TextBlock Text="Similarity threshold (%)" FontWeight="Bold" Margin="0,0,0,2"/>
                     <TextBox x:Name="SensitivityBox"/>
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="0-100 (higher = flags smaller changes, more false positives). Start low and raise it once you've seen how noisy your setup is." Style="{StaticResource Hint}" Margin="10,20,0,0" VerticalAlignment="Top"/>
+                <TextBlock Grid.Column="1" Text="30-95. The exact number the log reports (e.g. &quot;threshold 60%&quot;) -- lower = only flags bigger changes, fewer false positives. Start low and raise it once you've seen how noisy your setup is." Style="{StaticResource Hint}" Margin="10,20,0,0" VerticalAlignment="Top"/>
             </Grid>
             <CheckBox x:Name="AutoPauseCheck" Content="Automatically pause the print when an anomaly is detected" IsChecked="False" Margin="0,0,0,2"/>
             <TextBlock Text="Off by default for good reason -- a false positive would pause a perfectly good print. Leave this off until you've watched the log against a few real prints and trust the sensitivity setting." Style="{StaticResource Hint}"/>

@@ -36,14 +36,45 @@ public partial class CaptureService(Settings settings)
         _cts?.Cancel();
     }
 
+    /// <summary>
+    /// Cancels the capture loop and waits for it to actually finish -- including the final
+    /// assemble/delete cleanup, which deliberately runs on its own uncancellable token so a plain
+    /// Stop() can't interrupt it. Exists for MainWindow's Closing handler (14/09/2026): closing
+    /// the window directly used to kill the whole process instantly with nothing waiting for that
+    /// cleanup, which is the real reason a completed session once left its source frames
+    /// undeleted despite auto-delete being enabled -- see the README's own note on this.
+    /// </summary>
+    public async Task StopAndWaitAsync()
+    {
+        _cts?.Cancel();
+        if (_loopTask != null)
+        {
+            try { await _loopTask; }
+            catch { /* the loop already logs its own errors; nothing further to do here */ }
+        }
+    }
+
+    // Status is polled far more often than a frame is actually captured -- purely so a layer
+    // change can be caught close to when it really happens. Captures still only happen on the
+    // user's configured interval, just anchored to layer-change moments instead of running on
+    // their own free clock (14/09/2026, Jason: "still timed but reset every layer so same point
+    // every 10s or whatever is set"). The practical effect: a slow, wide layer (lots of X/Y
+    // travel before Z advances) naturally accumulates more frames before the layer changes,
+    // while a fast, thin layer only gets one or two -- without ever touching G-code, since it's
+    // purely reactive to the real per-layer duration this app already observes.
+    private static readonly TimeSpan StatusPollInterval = TimeSpan.FromSeconds(2);
+
     private async Task RunLoopAsync(CancellationToken ct)
     {
         await using var printer = new KobraMqttClient(settings.PrinterHost);
         _printer = printer;
-        Log?.Invoke($"Watching {settings.PrinterHost} every {settings.IntervalSeconds}s...");
+        Log?.Invoke($"Watching {settings.PrinterHost} every {StatusPollInterval.TotalSeconds}s, capturing every {settings.IntervalSeconds}s per layer...");
+
+        DateTime? nextCaptureDue = null;
 
         while (!ct.IsCancellationRequested)
         {
+            var previousLayer = _currLayer;
             PrintState state;
             try
             {
@@ -73,24 +104,30 @@ public partial class CaptureService(Settings settings)
             if (!wasActive && isActive)
             {
                 BeginSession();
+                nextCaptureDue = DateTime.UtcNow; // always capture frame 1 immediately
             }
 
-            if (state == PrintState.Printing)
+            var layerChanged = isActive && previousLayer != _currLayer;
+            if (layerChanged) nextCaptureDue = DateTime.UtcNow; // reset the interval to this instant
+
+            if (state == PrintState.Printing && nextCaptureDue is { } due && DateTime.UtcNow >= due)
             {
                 await CaptureFrameAsync(ct);
+                nextCaptureDue = DateTime.UtcNow.AddSeconds(settings.IntervalSeconds);
             }
 
             if (wasActive && !isActive)
             {
                 var endState = layerIndicatesComplete && state == PrintState.Printing ? PrintState.Complete : state;
                 await EndSessionAsync(endState, ct);
+                nextCaptureDue = null;
             }
 
             _lastState = state;
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(settings.IntervalSeconds), ct);
+                await Task.Delay(StatusPollInterval, ct);
             }
             catch (OperationCanceledException)
             {

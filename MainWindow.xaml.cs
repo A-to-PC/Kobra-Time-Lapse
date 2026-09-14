@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,6 +10,7 @@ public partial class MainWindow : Window
     private readonly Settings _settings;
     private CaptureService? _capture;
     private string? _logFilePath;
+    private bool _readyToClose;
 
     public MainWindow(Settings settings)
     {
@@ -16,6 +18,23 @@ public partial class MainWindow : Window
         ThemeManager.Track(this);
         _settings = settings;
         LoadSettingsIntoUi();
+        Closing += MainWindow_Closing;
+    }
+
+    // Closing the window directly used to kill the whole process instantly, with nothing
+    // waiting for an in-progress assemble/delete to finish -- confirmed 14/09/2026 as the real
+    // cause of a completed session once leaving its source frames undeleted despite auto-delete
+    // being enabled (StopAndWaitAsync's own comment has the full story). Hold the window open
+    // just long enough for that cleanup to genuinely finish before actually letting it close.
+    private async void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_readyToClose || _capture is not { IsRunning: true }) return;
+
+        e.Cancel = true;
+        StatusText.Text = "Finishing up before closing...";
+        await _capture.StopAndWaitAsync();
+        _readyToClose = true;
+        Close();
     }
 
     private void LoadSettingsIntoUi()

@@ -5,12 +5,16 @@ namespace KobraTimeLapse;
 
 public partial class SetupWindow : Window
 {
-    // Maps the friendlier 0-100 "Sensitivity" shown in the UI to the underlying SSIM
-    // threshold CaptureService actually compares against. 0 = only flag huge changes,
-    // 100 = flag almost anything -- see Settings.FailureDetectionThreshold for why the
-    // actual comparison direction is "lower SSIM = more different".
-    private const double MinThreshold = 0.30;
-    private const double MaxThreshold = 0.95;
+    // Shown and set directly as the raw SSIM threshold percentage CaptureService actually
+    // compares against -- deliberately NOT a separate 0-100 "sensitivity" score anymore. That
+    // abstraction was a real, confirmed UX problem (14/09/2026, Jason: "that is odd for a user
+    // to grasp, why not a sensitivity slide for %, 35 is 52% is strange"): the log reports the
+    // real percentage ("threshold 60%"), so the UI should show and accept that exact number, not
+    // a converted score the user has to mentally translate. Still clamped to a sane range --
+    // below 30% would only ever catch a near-total scene change, above 95% would flag almost
+    // any camera noise.
+    private const double MinThresholdPercent = 30;
+    private const double MaxThresholdPercent = 95;
 
     public Settings Settings { get; }
 
@@ -37,8 +41,8 @@ public partial class SetupWindow : Window
         EnableTimelapseCheck.IsChecked = settings.EnableTimelapse;
         EnableFailureDetectionCheck.IsChecked = settings.EnableFailureDetection;
         AutoPauseCheck.IsChecked = settings.AutoPauseOnAnomaly;
-        var sensitivity = (int)Math.Round((settings.FailureDetectionThreshold - MinThreshold) / (MaxThreshold - MinThreshold) * 100);
-        SensitivityBox.Text = Math.Clamp(sensitivity, 0, 100).ToString();
+        var thresholdPercent = (int)Math.Round(settings.FailureDetectionThreshold * 100);
+        SensitivityBox.Text = Math.Clamp(thresholdPercent, (int)MinThresholdPercent, (int)MaxThresholdPercent).ToString();
         UpdateSensitivityRowVisibility();
     }
 
@@ -96,9 +100,10 @@ public partial class SetupWindow : Window
             return;
         }
 
-        if (enableFailureDetection && (!int.TryParse(SensitivityBox.Text.Trim(), out var sensitivity) || sensitivity < 0 || sensitivity > 100))
+        if (enableFailureDetection && (!int.TryParse(SensitivityBox.Text.Trim(), out var thresholdPercent)
+            || thresholdPercent < MinThresholdPercent || thresholdPercent > MaxThresholdPercent))
         {
-            ErrorText.Text = "Sensitivity must be a number from 0 to 100.";
+            ErrorText.Text = $"Similarity threshold must be a number from {MinThresholdPercent:0} to {MaxThresholdPercent:0}.";
             return;
         }
 
@@ -119,8 +124,8 @@ public partial class SetupWindow : Window
         Settings.EnableFailureDetection = enableFailureDetection;
         if (enableFailureDetection)
         {
-            var savedSensitivity = int.Parse(SensitivityBox.Text.Trim());
-            Settings.FailureDetectionThreshold = MinThreshold + savedSensitivity / 100.0 * (MaxThreshold - MinThreshold);
+            var savedThresholdPercent = int.Parse(SensitivityBox.Text.Trim());
+            Settings.FailureDetectionThreshold = savedThresholdPercent / 100.0;
             Settings.AutoPauseOnAnomaly = AutoPauseCheck.IsChecked == true;
         }
         else
