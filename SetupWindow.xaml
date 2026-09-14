@@ -60,6 +60,8 @@
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="30-95. The exact number the log reports (e.g. &quot;threshold 60%&quot;) -- lower = only flags bigger changes, fewer false positives. Start low and raise it once you've seen how noisy your setup is." Style="{StaticResource Hint}" Margin="10,20,0,0" VerticalAlignment="Top"/>
             </Grid>
+            <CheckBox x:Name="AutoCalibrationCheck" Content="Auto-calibrate per print" IsChecked="False" Margin="0,0,0,2"/>
+            <TextBlock Text="The right threshold genuinely varies by print size/geometry -- a wide print naturally has more normal frame-to-frame motion than a small one. When on, the threshold above is still used as a safety net for the first ~15 comparisons of each print, then this print's own normal noise floor takes over (only ever getting more tolerant, never less, than the setting above)." Style="{StaticResource Hint}"/>
             <CheckBox x:Name="AutoPauseCheck" Content="Automatically pause the print when an anomaly is detected" IsChecked="False" Margin="0,0,0,2"/>
             <TextBlock Text="Off by default for good reason -- a false positive would pause a perfectly good print. Leave this off until you've watched the log against a few real prints and trust the sensitivity setting." Style="{StaticResource Hint}"/>
 

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace KobraTimeLapse;
@@ -19,6 +20,16 @@ public partial class CaptureService(Settings settings)
     private int? _totalLayers;
     private KobraMqttClient? _printer;
     private bool _pauseSentForCurrentAnomaly;
+
+    // Auto-calibration (14/09/2026, see Settings.EnableAutoCalibration's own comment for the
+    // full reasoning): collects this print's own normal frame-similarity scores during an early
+    // window, still compared against the fixed FailureDetectionThreshold as a safety net the
+    // whole time, then derives a per-print threshold once enough samples exist.
+    private readonly List<double> _calibrationScores = [];
+    private double? _calibratedThreshold;
+    private const int CalibrationSampleCount = 15;
+    private const double CalibrationMargin = 0.08;
+    private const double CalibrationFloor = 0.20;
 
     public event Action<string>? Log;
 
@@ -173,6 +184,8 @@ public partial class CaptureService(Settings settings)
         _frameIndex = 0;
         _previousFramePath = null;
         _pauseSentForCurrentAnomaly = false;
+        _calibrationScores.Clear();
+        _calibratedThreshold = null;
 
         if (settings.EnableTimelapse)
         {
@@ -350,9 +363,34 @@ public partial class CaptureService(Settings settings)
             return;
         }
 
-        if (ssim >= settings.FailureDetectionThreshold) return;
+        // Auto-calibration: the fixed setting is always the safety net -- every comparison is
+        // checked against it, calibration or not, so an early-print failure (a common real
+        // failure time) is never missed while still collecting samples. Once enough of this
+        // print's own scores are in, the effective threshold can drop below that (never above
+        // it) to match this print's own normal motion, cutting false positives without ever
+        // going blind or suppressing what the user explicitly asked to catch.
+        var effectiveThreshold = settings.FailureDetectionThreshold;
+        if (settings.EnableAutoCalibration)
+        {
+            if (_calibratedThreshold is { } calibrated)
+            {
+                effectiveThreshold = Math.Min(effectiveThreshold, calibrated);
+            }
+            else
+            {
+                _calibrationScores.Add(ssim);
+                if (_calibrationScores.Count >= CalibrationSampleCount)
+                {
+                    var learned = Math.Clamp(_calibrationScores.Min() - CalibrationMargin, CalibrationFloor, settings.FailureDetectionThreshold);
+                    _calibratedThreshold = learned;
+                    Log?.Invoke($"Auto-calibration complete -- this print's own threshold is now {learned:P0} (was {settings.FailureDetectionThreshold:P0}).");
+                }
+            }
+        }
 
-        Log?.Invoke($"** Possible print anomaly ** -- frame similarity {ssim:P0} (threshold {settings.FailureDetectionThreshold:P0}). Could be a real issue, or the enclosure curtain/lighting -- check the camera.");
+        if (ssim >= effectiveThreshold) return;
+
+        Log?.Invoke($"** Possible print anomaly ** -- frame similarity {ssim:P0} (threshold {effectiveThreshold:P0}). Could be a real issue, or the enclosure curtain/lighting -- check the camera.");
 
         if (!settings.AutoPauseOnAnomaly || _pauseSentForCurrentAnomaly || _printer == null) return;
 

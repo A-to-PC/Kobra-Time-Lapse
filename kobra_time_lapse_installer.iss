@@ -1,5 +1,5 @@
 #define AppName "Kobra Time Lapse"
-#define AppVersion "1.0.2"
+#define AppVersion "1.0.3"
 #define AppPublisher "A to PC"
 #define AppURL "https://github.com/A-to-PC/Kobra-Time-Lapse"
 

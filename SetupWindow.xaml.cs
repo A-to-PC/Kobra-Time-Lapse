@@ -40,6 +40,7 @@ public partial class SetupWindow : Window
 
         EnableTimelapseCheck.IsChecked = settings.EnableTimelapse;
         EnableFailureDetectionCheck.IsChecked = settings.EnableFailureDetection;
+        AutoCalibrationCheck.IsChecked = settings.EnableAutoCalibration;
         AutoPauseCheck.IsChecked = settings.AutoPauseOnAnomaly;
         var thresholdPercent = (int)Math.Round(settings.FailureDetectionThreshold * 100);
         SensitivityBox.Text = Math.Clamp(thresholdPercent, (int)MinThresholdPercent, (int)MaxThresholdPercent).ToString();
@@ -50,7 +51,9 @@ public partial class SetupWindow : Window
 
     private void UpdateSensitivityRowVisibility()
     {
-        SensitivityRow.IsEnabled = EnableFailureDetectionCheck.IsChecked == true;
+        var enabled = EnableFailureDetectionCheck.IsChecked == true;
+        SensitivityRow.IsEnabled = enabled;
+        AutoCalibrationCheck.IsEnabled = enabled;
     }
 
     private void BrowseButton_Click(object sender, RoutedEventArgs e)
@@ -126,10 +129,12 @@ public partial class SetupWindow : Window
         {
             var savedThresholdPercent = int.Parse(SensitivityBox.Text.Trim());
             Settings.FailureDetectionThreshold = savedThresholdPercent / 100.0;
+            Settings.EnableAutoCalibration = AutoCalibrationCheck.IsChecked == true;
             Settings.AutoPauseOnAnomaly = AutoPauseCheck.IsChecked == true;
         }
         else
         {
+            Settings.EnableAutoCalibration = false;
             Settings.AutoPauseOnAnomaly = false;
         }
         Settings.SetupComplete = true;

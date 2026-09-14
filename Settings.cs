@@ -50,6 +50,16 @@ public class Settings
     // perfectly good print, and the false-positive rate on any given setup isn't known until
     // it's been run log-only against a few real prints first.
     public bool AutoPauseOnAnomaly { get; set; } = false;
+    // Auto-calibration (14/09/2026): the right threshold genuinely varies per print -- a wide,
+    // X/Y-heavy print produces far more normal frame-to-frame motion than a small, tall one, so
+    // no single fixed value is ever really "correct" for every print. When on, the first several
+    // comparisons of each print (still checked against FailureDetectionThreshold above as a
+    // safety net, never blind) are used to learn that print's own normal noise floor, and the
+    // effective threshold can only move DOWN from there (more tolerant of that print's own
+    // motion, fewer false positives) -- it can never end up higher/more sensitive than what's set
+    // here, so calibration can only reduce false positives, never suppress a genuine catch below
+    // what the user explicitly configured. See CaptureService's calibration fields for the logic.
+    public bool EnableAutoCalibration { get; set; } = false;
     // False until the first-run Setup window has been completed once. Gates whether Setup
     // shows automatically on launch; the user can still reopen it later from MainWindow.
     public bool SetupComplete { get; set; } = false;
