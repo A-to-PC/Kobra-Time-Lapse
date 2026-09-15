@@ -115,13 +115,23 @@ public partial class CaptureService(Settings settings)
             if (!wasActive && isActive)
             {
                 BeginSession();
-                nextCaptureDue = DateTime.UtcNow; // always capture frame 1 immediately
+                // Deliberately NOT capturing yet here -- the printer reports the whole job
+                // (including bed leveling/homing/priming) as "Printing" with curr_layer sitting
+                // at 0 during that lead-in, confirmed live 15/09/2026 (Jason: "print not started"
+                // while frames were already being captured). Real capture only starts once
+                // curr_layer actually reaches 1 below.
+                nextCaptureDue = null;
             }
 
-            var layerChanged = isActive && previousLayer != _currLayer;
+            // Real filament going down starts at layer 1, not layer 0 (leveling/homing/priming
+            // all report as layer 0) -- gate every capture on this so nothing gets recorded
+            // before the print itself has actually begun.
+            var realPrintingStarted = _currLayer is { } cl2 && cl2 >= 1;
+
+            var layerChanged = isActive && realPrintingStarted && previousLayer != _currLayer;
             if (layerChanged) nextCaptureDue = DateTime.UtcNow; // reset the interval to this instant
 
-            if (state == PrintState.Printing && nextCaptureDue is { } due && DateTime.UtcNow >= due)
+            if (state == PrintState.Printing && realPrintingStarted && nextCaptureDue is { } due && DateTime.UtcNow >= due)
             {
                 await CaptureFrameAsync(ct);
                 nextCaptureDue = DateTime.UtcNow.AddSeconds(settings.IntervalSeconds);
