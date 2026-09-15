@@ -18,8 +18,20 @@ public partial class CaptureService(Settings settings)
     private PrintState _lastState = PrintState.Unknown;
     private int? _currLayer;
     private int? _totalLayers;
+    private string? _fileName;
     private KobraMqttClient? _printer;
     private bool _pauseSentForCurrentAnomaly;
+
+    // Second, independent line of defense against a print that stops without ever being
+    // recognised as over -- see MapState's own comment for the real root cause (a raw state
+    // string matching the generic "print" check before a terminal one). This catches whatever
+    // that fix doesn't: any other raw state string this printer's firmware might one day send
+    // that isn't accounted for. If curr_layer hasn't moved this long while nominally active,
+    // treat it as stopped rather than trust the state string forever -- 10 minutes is well
+    // beyond what a single real layer takes even on a slow/complex print, so this should never
+    // fire on a genuinely still-printing job.
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(10);
+    private DateTime? _layerLastChangedAt;
 
     // Auto-calibration (14/09/2026, see Settings.EnableAutoCalibration's own comment for the
     // full reasoning): collects this print's own normal frame-similarity scores during an early
@@ -89,7 +101,7 @@ public partial class CaptureService(Settings settings)
             PrintState state;
             try
             {
-                (state, _currLayer, _totalLayers) = await printer.GetStatusAsync(ct);
+                (state, _currLayer, _totalLayers, _fileName) = await printer.GetStatusAsync(ct);
             }
             catch (OperationCanceledException)
             {
@@ -129,6 +141,15 @@ public partial class CaptureService(Settings settings)
             var realPrintingStarted = _currLayer is { } cl2 && cl2 >= 1;
 
             var layerChanged = isActive && realPrintingStarted && previousLayer != _currLayer;
+
+            if (!isActive) _layerLastChangedAt = null;
+            else if (layerChanged || _layerLastChangedAt == null) _layerLastChangedAt = DateTime.UtcNow;
+
+            if (isActive && _layerLastChangedAt is { } lastChange && DateTime.UtcNow - lastChange > StallTimeout)
+            {
+                Log?.Invoke($"No layer progress for over {StallTimeout.TotalMinutes:0} minutes (stuck at layer {_currLayer}) -- treating as stopped rather than trusting the state string forever.");
+                isActive = false;
+            }
             if (layerChanged) nextCaptureDue = DateTime.UtcNow; // reset the interval to this instant
 
             if (state == PrintState.Printing && realPrintingStarted && nextCaptureDue is { } due && DateTime.UtcNow >= due)
@@ -199,7 +220,14 @@ public partial class CaptureService(Settings settings)
 
         if (settings.EnableTimelapse)
         {
-            var name = $"print_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}";
+            // Leads with the real print job name where the printer reports one (Jason: the old
+            // date-only folder name "is not helpful to search as a human" -- 15/09/2026), with
+            // the timestamp kept as a suffix for uniqueness (same file printed twice in one day)
+            // and as a safe fallback on its own if the printer hasn't reported a filename yet.
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            var name = string.IsNullOrWhiteSpace(_fileName)
+                ? $"print_{timestamp}"
+                : $"{SanitizeForFolderName(_fileName)}_{timestamp}";
             _sessionFolder = Path.Combine(settings.OutputFolder, name, "frames");
             Directory.CreateDirectory(_sessionFolder);
             Log?.Invoke($"Print started -- capturing to {_sessionFolder}");
@@ -212,6 +240,28 @@ public partial class CaptureService(Settings settings)
             Directory.CreateDirectory(_tempCaptureFolder);
             Log?.Invoke("Print started -- watching for anomalies (timelapse disabled).");
         }
+    }
+
+    // Strips the printer's own file extension (.gcode.3mf) and anything the filesystem can't
+    // take, so the real job name reads cleanly as a folder rather than carrying a raw filename's
+    // punctuation straight through.
+    private static string SanitizeForFolderName(string fileName)
+    {
+        var name = fileName;
+        foreach (var ext in new[] { ".gcode.3mf", ".gcode", ".3mf" })
+        {
+            if (name.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            {
+                name = name[..^ext.Length];
+                break;
+            }
+        }
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            name = name.Replace(c, '_');
+        }
+        name = name.Trim().Trim('.');
+        return name.Length == 0 ? "print" : name;
     }
 
     private async Task CaptureFrameAsync(CancellationToken ct)

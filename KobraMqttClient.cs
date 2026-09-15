@@ -38,12 +38,13 @@ public sealed class KobraMqttClient(string printerHost) : IAsyncDisposable
     private volatile string _lastState = "unknown";
     private int? _currLayer;
     private int? _totalLayers;
+    private volatile string? _fileName;
     private volatile string? _printCommandTopic;
 
-    public async Task<(PrintState State, int? CurrLayer, int? TotalLayers)> GetStatusAsync(CancellationToken ct)
+    public async Task<(PrintState State, int? CurrLayer, int? TotalLayers, string? FileName)> GetStatusAsync(CancellationToken ct)
     {
         await EnsureConnectedAsync(ct);
-        return (MapState(_lastState), _currLayer, _totalLayers);
+        return (MapState(_lastState), _currLayer, _totalLayers, _fileName);
     }
 
     // Same topic/payload shape as Kobra LAN Monitor's already live-verified pause command
@@ -119,6 +120,8 @@ public sealed class KobraMqttClient(string printerHost) : IAsyncDisposable
                         _currLayer = currLayer;
                     if (project.TryGetProperty("total_layers", out var tl) && tl.TryGetInt32(out var totalLayers))
                         _totalLayers = totalLayers;
+                    if (project.TryGetProperty("filename", out var fn) && fn.ValueKind == JsonValueKind.String)
+                        _fileName = fn.GetString();
                 }
                 catch (JsonException)
                 {
@@ -156,11 +159,18 @@ public sealed class KobraMqttClient(string printerHost) : IAsyncDisposable
     private static PrintState MapState(string raw)
     {
         var s = raw.ToLowerInvariant();
-        if (s.Contains("pause")) return PrintState.Paused;
-        if (s.Contains("print") || s.Contains("leveling") || s.Contains("heating")) return PrintState.Printing;
+        // Terminal/specific substrings are checked BEFORE the generic "print" catch-all
+        // deliberately -- a real raw state string for a failed print (e.g. something shaped
+        // like "printFailed" or "print_stopped") contains both "print" and a terminal word.
+        // With the broad "print" check first, that string matched Printing and never reached
+        // the failure checks below, so a print that failed partway through was never
+        // recognised as over -- confirmed live 15/09/2026 (curr_layer frozen for 40+ seconds,
+        // state still reporting Printing, auto-stop never fired). Terminal words win now.
         if (s.Contains("cancel") || s.Contains("stop")) return PrintState.Cancelled;
         if (s.Contains("error") || s.Contains("fail")) return PrintState.Error;
         if (s.Contains("complet") || s.Contains("finish") || s.Contains("idle") || s.Contains("standby")) return PrintState.Complete;
+        if (s.Contains("pause")) return PrintState.Paused;
+        if (s.Contains("print") || s.Contains("leveling") || s.Contains("heating")) return PrintState.Printing;
         return PrintState.Unknown;
     }
 
