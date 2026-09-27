@@ -30,6 +30,7 @@ public partial class SetupWindow : Window
         CameraPasswordBox.Password = settings.CameraPassword;
         OutputFolderBox.Text = settings.OutputFolder;
         DeleteFramesCheck.IsChecked = settings.DeleteFramesAfterAssembly;
+        MatchLanMonitorRotationCheck.IsChecked = settings.MatchLanMonitorRotation;
         RotationCombo.SelectedIndex = settings.RotationDegrees switch
         {
             90 => 1,
@@ -116,6 +117,7 @@ public partial class SetupWindow : Window
         Settings.CameraPassword = cameraPassword;
         Settings.OutputFolder = outputFolder;
         Settings.DeleteFramesAfterAssembly = DeleteFramesCheck.IsChecked == true;
+        Settings.MatchLanMonitorRotation = MatchLanMonitorRotationCheck.IsChecked == true;
         Settings.RotationDegrees = RotationCombo.SelectedIndex switch
         {
             1 => 90,

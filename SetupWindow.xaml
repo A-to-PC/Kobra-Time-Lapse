@@ -80,13 +80,14 @@
             <CheckBox x:Name="DeleteFramesCheck" Content="Delete the individual snapshot frames once the video is assembled" IsChecked="True" Margin="0,4,0,10"/>
 
             <TextBlock Text="Camera rotation" FontWeight="Bold" Margin="0,0,0,2"/>
+            <CheckBox x:Name="MatchLanMonitorRotationCheck" Content="Use Kobra LAN Monitor's rotation for this camera (if it has one)" IsChecked="True" Margin="0,2,0,6"/>
             <ComboBox x:Name="RotationCombo" SelectedIndex="0">
                 <ComboBoxItem Content="None"/>
                 <ComboBoxItem Content="90 degrees clockwise"/>
                 <ComboBoxItem Content="180 degrees"/>
                 <ComboBoxItem Content="90 degrees counter-clockwise"/>
             </ComboBox>
-            <TextBlock Text="If the camera is mounted sideways (e.g. portrait, to better frame a tall printer), pick the rotation that makes the recorded frames come out upright." Style="{StaticResource Hint}"/>
+            <TextBlock Text="If the camera is mounted sideways (e.g. portrait, to better frame a tall printer), pick the rotation that makes the recorded frames come out upright. The saved frames and the finished video both use it. With the box above ticked, the rotation you set in Kobra LAN Monitor is used instead, whenever it can be found; this list is the fallback." Style="{StaticResource Hint}"/>
         </StackPanel>
         </ScrollViewer>
 

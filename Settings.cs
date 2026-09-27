@@ -33,6 +33,11 @@ public class Settings
     // sideways (e.g. portrait, to better frame a printer that's taller than it is wide).
     // Valid values: 0, 90, 180, 270.
     public int RotationDegrees { get; set; } = 0;
+    // When on, and Kobra LAN Monitor is installed with a printer whose network camera host
+    // matches CameraHost, that printer's saved camera rotation is used instead of
+    // RotationDegrees -- one rotation setting for the live view and the recorded time lapse.
+    // Falls back to RotationDegrees whenever LAN Monitor's setting can't be found.
+    public bool MatchLanMonitorRotation { get; set; } = true;
 
     // Independent toggles -- Timelapse and Failure Detection share the same capture loop and
     // camera connection, but either can run alone or both together.

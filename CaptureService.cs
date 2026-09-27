@@ -32,6 +32,8 @@ public partial class CaptureService(Settings settings)
     // fire on a genuinely still-printing job.
     private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(10);
     private DateTime? _layerLastChangedAt;
+    private DateTime? _finalLayerStartedAt;
+    private TimeSpan _lastLayerDuration;
 
     // Auto-calibration (14/09/2026, see Settings.EnableAutoCalibration's own comment for the
     // full reasoning): collects this print's own normal frame-similarity scores during an early
@@ -119,7 +121,17 @@ public partial class CaptureService(Settings settings)
             // session. Treat that as "no longer active" even if the state string itself still
             // reads as printing/unrecognized, so a genuinely finished print never gets stuck
             // waiting on a state-string match that may not come.
-            var layerIndicatesComplete = _currLayer is { } cl && _totalLayers is { } tl && tl > 0 && cl >= tl;
+            // curr_layer reaches total_layers the moment the FINAL layer STARTS, not when it
+            // finishes -- confirmed live 27/09/2026: a 20-layer print was ended at layer 20 with
+            // 11 minutes of printing still to go, so the last layer was never captured. So the
+            // layer count only counts as "complete" after the final layer has had a fair chance
+            // to finish: 1.5x the previous layer's duration, at least 2 minutes.
+            var reachedFinalLayer = _currLayer is { } cl && _totalLayers is { } tl && tl > 0 && cl >= tl;
+            if (!reachedFinalLayer) _finalLayerStartedAt = null;
+            else _finalLayerStartedAt ??= DateTime.UtcNow;
+            var finalLayerGrace = TimeSpan.FromTicks(Math.Max(TimeSpan.FromMinutes(2).Ticks, (long)(_lastLayerDuration.Ticks * 1.5)));
+            var layerIndicatesComplete = reachedFinalLayer && _finalLayerStartedAt is { } finalStart
+                && DateTime.UtcNow - finalStart > finalLayerGrace;
 
             var wasActive = _lastState is PrintState.Printing or PrintState.Paused;
             var isActive = state is PrintState.Printing or PrintState.Paused && !layerIndicatesComplete;
@@ -142,12 +154,17 @@ public partial class CaptureService(Settings settings)
 
             var layerChanged = isActive && realPrintingStarted && previousLayer != _currLayer;
 
+            if (layerChanged && _layerLastChangedAt is { } prevChange) _lastLayerDuration = DateTime.UtcNow - prevChange;
             if (!isActive) _layerLastChangedAt = null;
             else if (layerChanged || _layerLastChangedAt == null) _layerLastChangedAt = DateTime.UtcNow;
 
-            if (isActive && _layerLastChangedAt is { } lastChange && DateTime.UtcNow - lastChange > StallTimeout)
+            // Adaptive: a slow flat print can have layers longer than a fixed 10 minutes (the
+            // 27/09/2026 honeycomb panels ran ~15 minutes a layer), so the stall limit scales
+            // with the real layer time seen so far and never drops below the fixed floor.
+            var stallLimit = TimeSpan.FromTicks(Math.Max(StallTimeout.Ticks, _lastLayerDuration.Ticks * 3));
+            if (isActive && _layerLastChangedAt is { } lastChange && DateTime.UtcNow - lastChange > stallLimit)
             {
-                Log?.Invoke($"No layer progress for over {StallTimeout.TotalMinutes:0} minutes (stuck at layer {_currLayer}) -- treating as stopped rather than trusting the state string forever.");
+                Log?.Invoke($"No layer progress for over {stallLimit.TotalMinutes:0} minutes (stuck at layer {_currLayer}) -- treating as stopped rather than trusting the state string forever.");
                 isActive = false;
             }
             if (layerChanged) nextCaptureDue = DateTime.UtcNow; // reset the interval to this instant
@@ -212,6 +229,8 @@ public partial class CaptureService(Settings settings)
     private void BeginSession()
     {
         _sessionActive = true;
+        _finalLayerStartedAt = null;
+        _lastLayerDuration = TimeSpan.Zero;
         _frameIndex = 0;
         _previousFramePath = null;
         _pauseSentForCurrentAnomaly = false;
@@ -384,6 +403,46 @@ public partial class CaptureService(Settings settings)
         }
     }
 
+    // Rotation actually applied to each frame: Kobra LAN Monitor's saved rotation for the printer
+    // whose network camera is this same camera, when the match option is on and that setting can
+    // be read; otherwise this app's own RotationDegrees. Re-read on every capture (a tiny JSON
+    // file) so changing the rotation in LAN Monitor takes effect without restarting anything.
+    private int EffectiveRotationDegrees()
+    {
+        if (settings.MatchLanMonitorRotation)
+        {
+            try
+            {
+                var path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "KobraLanMonitor", "settings.json");
+                if (File.Exists(path))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+                    if (doc.RootElement.TryGetProperty("Printers", out var printers) &&
+                        printers.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var p in printers.EnumerateArray())
+                        {
+                            if (p.TryGetProperty("NetworkCameraHost", out var host) &&
+                                string.Equals(host.GetString(), settings.CameraHost, StringComparison.OrdinalIgnoreCase) &&
+                                p.TryGetProperty("CameraRotationDeg", out var deg) &&
+                                deg.TryGetInt32(out var value))
+                            {
+                                return value;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Unreadable/partially-written file -- fall back to this app's own setting.
+            }
+        }
+        return settings.RotationDegrees;
+    }
+
     // Builds the ffmpeg -vf argument (e.g. " -vf transpose=1"). Returns "" (no -vf at all)
     // when no rotation is configured.
     private string BuildVideoFilter()
@@ -392,7 +451,7 @@ public partial class CaptureService(Settings settings)
 
         // transpose=1 is 90 clockwise, transpose=2 is 90 counter-clockwise; 180 is two
         // 90-clockwise passes chained, since ffmpeg has no single "180" transpose value.
-        switch (settings.RotationDegrees)
+        switch (EffectiveRotationDegrees())
         {
             case 90: filters.Add("transpose=1"); break;
             case 180: filters.Add("transpose=1"); filters.Add("transpose=1"); break;
