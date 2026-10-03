@@ -1,10 +1,10 @@
 # Kobra Time Lapse
 
-A small standalone Windows app that watches an Anycubic Kobra 3-series printer's own LAN protocol for print state, records a timelapse from any RTSP camera while it prints, and can optionally flag a large sudden change between frames as a possible print failure.
+A small standalone Windows app that watches an Anycubic Kobra 3-series printer's own LAN protocol for print state, records a timelapse from any RTSP camera while it prints, and can optionally flag a likely print failure using a small AI model that runs fully locally.
 
 No Moonraker, no Klipper, no OctoPrint plugin, nothing installed on the printer — it talks to the printer's stock firmware directly over your network, the same way Anycubic's own apps do. If you're running Rinkhals with Moonraker, see [3D-Time-Lapse](https://github.com/A-to-PC/3D-Time-Lapse) instead — that's the Moonraker-based sibling of this project; this one is for stock firmware only.
 
-**Status: pre-release.** Confirmed against real prints: connecting, capturing frames, assembling the timelapse, and failure detection's log-only alerts (real testing on a K3M: a 50% threshold over ~40 minutes/208 frames produced 3 alerts, all right at the boundary, no real failures). **Auto-pause specifically has never actually fired against a real print** — every real test so far ran with it off, log-only, so the detection logic has real data behind it but the pause action itself doesn't. Use it at your own risk: a false positive pauses a perfectly good print, and one person's testing on one printer, one camera setup, and one threshold value can't rule out your own setup behaving differently. Camera rotation also hasn't had real testing yet.
+**Status: released.** Timelapse capture and assembly are confirmed solid against real prints. **Failure detection was rebuilt 03/10/2026** (an AI classifier replacing the previous SSIM frame-diff approach — see "How it works" below) and has **not yet been tested against a real print failure**; the SSIM version's own real-world testing no longer applies to it. **Auto-pause has never actually fired against a real print** under either approach — use it at your own risk: a false positive pauses a perfectly good print, and no real-world false-positive rate is known yet for the AI classifier on your specific setup. Camera rotation also hasn't had real testing yet.
 
 Part of a small family of tools built out of real Kobra 3 Max ownership — see [Kobra 3 Max: The Long Way Round](https://github.com/A-to-PC/Kobra-3-Max-Journey) for the full story of why this exists.
 
@@ -15,7 +15,7 @@ Stock Kobra 3 firmware has no Moonraker or OctoPrint API for a tool like this to
 ## Features
 
 - **Timelapse** — captures a frame at a set interval while a print is running, assembles `timelapse.mp4` automatically once it finishes, and can delete the individual snapshot frames afterward so completed prints don't leave hundreds of loose JPEGs behind. Capture timing is anchored to each layer change rather than running on its own free clock, so a slow/wide layer naturally gets more frames than a fast/thin one and the result looks steady rather than jittery — confirmed on a real print, no G-code and no added print time involved.
-- **Failure detection** (optional, off by default) — compares consecutive frames and flags a large sudden change as a possible anomaly. Log-only unless you explicitly also enable auto-pause, which is a separate opt-in on top of this — **auto-pause is at your own risk, see the Status note above.** Expect the threshold to need real tuning against your own prints and enclosure/lighting setup — an enclosure light or roller door changing, or even normal camera sensor noise, can register as a "large change" too. The right value also genuinely varies by print size (a wide, X/Y-heavy print naturally has more normal frame-to-frame motion than a small one) — optional per-print auto-calibration is available to handle that automatically instead of tuning by hand for every print.
+- **Failure detection** (optional, off by default) — classifies each captured frame with a small local AI model (~5MB, runs via ONNX Runtime, no cloud, no frame ever leaves your machine) and flags a likely failure. Ships with a working default model out of the box. Log-only unless you explicitly also enable auto-pause, which is a separate opt-in on top of this — **auto-pause is at your own risk, see the Status note above.** Expect the confidence margin to need real tuning against your own prints and enclosure/lighting setup, same as any detector.
 - **Camera rotation** — 0/90/180/270 degrees, for a camera mounted sideways to better frame a tall/narrow printer.
 - **Manual mode** — record on a plain interval with Start/Stop, no printer connection needed at all.
 - Light/dark theme, following Windows automatically or set explicitly.
@@ -48,7 +48,7 @@ Timelapse and Failure Detection are independent — run either one alone, or bot
 - Discovers the printer's MQTT broker address and per-session credentials via the same local handshake Anycubic's own apps use, then subscribes to its live status reports (no cloud account, no credentials hardcoded).
 - Watches the reported print state and layer count. When a print starts, it begins capturing; when it ends (by state, or by layer count reaching the total — whichever is more reliable at the time), it assembles the video and stops.
 - Grabs each frame straight from the camera's RTSP stream via `ffmpeg`, applying rotation if configured.
-- Failure detection compares each new frame against the previous one using `ffmpeg`'s own SSIM (structural similarity) filter — no extra image library needed.
+- Failure detection runs each new frame through a small ShuffleNetV2 encoder (ONNX, ~5MB) and classifies it by nearest-prototype distance against known "success"/"failure" examples — the same approach [PrintGuard](https://github.com/oliverbravery/PrintGuard) uses, and this app's own model/default prototypes are built directly from its real published ones (see License below). All inference is local; nothing is ever uploaded anywhere.
 
 ## Building from source
 
@@ -64,4 +64,9 @@ I've spent decades working in IT, and yes, I do use AI (Claude) heavily to write
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GPL-2.0-only — see [LICENSE](LICENSE). Changed from MIT on 03/10/2026 when the failure-detection
+model and its preprocessing/classification code were added, both built directly from
+[PrintGuard](https://github.com/oliverbravery/PrintGuard) (also GPL-2.0-only) — specifically its
+`models/encoder_float32.onnx`, `metadata.json` and `prototypes.json`, and its preprocessing/
+classification logic from `printguard/engine/vision.py`, ported to C#. This app was already free
+and open-source, so the practical effect of the license change is limited to the text on the tin.
